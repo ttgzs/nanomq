@@ -71,8 +71,11 @@ disconnect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 	// nng_pipe_get_ptr(p, NNG_OPT_MQTT_DISCONNECT_PROPERTY, &prop);
 	log_warn("bridge client disconnected! RC [%d] \n", reason);
 
-	nng_cv *cv = arg;
-	nng_cv_wake(cv);
+	bridge_param *bridge_arg = arg;
+
+	nng_mtx_lock(bridge_arg->switch_mtx);
+	nng_cv_wake1(bridge_arg->switch_cv);
+	nng_mtx_unlock(bridge_arg->switch_mtx);
 }
 
 // Connack message callback function
@@ -108,7 +111,7 @@ bridge_connect_cb(nng_pipe p, nng_pipe_ev ev, void *arg)
 }
 
 static int
-bridge_tcp_client(bridge_param *bridge_arg, nng_cv *cv)
+bridge_tcp_client(bridge_param *bridge_arg)
 {
 	int           rv;
 	nng_dialer    dialer;
@@ -160,7 +163,7 @@ bridge_tcp_client(bridge_param *bridge_arg, nng_cv *cv)
 
 	nng_dialer_set_ptr(dialer, NNG_OPT_MQTT_CONNMSG, connmsg);
 	nng_mqtt_set_connect_cb(*sock, bridge_connect_cb, bridge_arg);
-	nng_mqtt_set_disconnect_cb(*sock, disconnect_cb, cv);
+	nng_mqtt_set_disconnect_cb(*sock, disconnect_cb, bridge_arg);
 
 	nng_dialer_start(dialer, NNG_FLAG_NONBLOCK);
 
@@ -183,8 +186,11 @@ quic_disconnect_cb(void *rmsg, void *arg)
 	log_warn("quic bridge client disconnected! RC [%d] \n", reason);
 	nng_msg_free(rmsg);
 
-	nng_cv *cv = arg;
-	nng_cv_wake(cv);
+	bridge_param *bridge_arg = arg;
+
+	nng_mtx_lock(bridge_arg->switch_mtx);
+	nng_cv_wake(bridge_arg->switch_cv);
+	nng_mtx_unlock(bridge_arg->switch_mtx);
 
 	return 0;
 }
@@ -228,7 +234,7 @@ bridge_quic_connect_cb(void *rmsg, void *arg)
 
 
 static int
-bridge_quic_client(bridge_param *bridge_arg, nng_cv *cv)
+bridge_quic_client(bridge_param *bridge_arg)
 {
 	int           rv;
 	nng_dialer    dialer;
@@ -254,7 +260,7 @@ bridge_quic_client(bridge_param *bridge_arg, nng_cv *cv)
 	node->sock         = (void *) sock;
 
 	if (0 != nng_mqtt_quic_set_connect_cb(sock, bridge_quic_connect_cb, (void *)bridge_arg) ||
-	    0 != nng_mqtt_quic_set_disconnect_cb(sock, quic_disconnect_cb, (void *)cv)) {
+	    0 != nng_mqtt_quic_set_disconnect_cb(sock, quic_disconnect_cb, (void *)bridge_arg)) {
 	    //0 != nng_mqtt_quic_set_msg_recv_cb(sock, msg_recv_cb, (void *)arg) ||
 	    //0 != nng_mqtt_quic_set_msg_send_cb(sock, msg_send_cb, (void *)arg)) {
 		log_debug("error in quic client cb set.");
@@ -312,17 +318,22 @@ hybridger_cb(void *arg)
 		log_warn("Bridge has switched to %s", node->address);
 
 		if (0 == strncmp(node->address, tcp_scheme, 8)) {
-			bridge_tcp_client(bridge_arg, bridge_arg->switch_cv);
+			bridge_tcp_client(bridge_arg);
 #if defined(SUPP_QUIC)
 		} else if (0 == strncmp(node->address, quic_scheme, 9)) {
-			bridge_quic_client(bridge_arg, bridge_arg->switch_cv);
+			bridge_quic_client(bridge_arg);
 #endif
 		} else {
 			log_error("Unsupported bridge protocol.");
 		}
-		if (bridge_arg->exec_cv)
+		if (bridge_arg->exec_cv) {
+			nng_mtx_lock(bridge_arg->exec_mtx);
 			nng_cv_wake1(bridge_arg->exec_cv);
+			nng_mtx_unlock(bridge_arg->exec_mtx);
+		}
+		nng_mtx_lock(bridge_arg->switch_mtx);
 		nng_cv_wait(bridge_arg->switch_cv);
+		nng_mtx_unlock(bridge_arg->switch_mtx);
 	}
 
 	nng_cv_free(bridge_arg->switch_cv);
@@ -354,7 +365,9 @@ bridge_client(nng_socket *sock, conf *config, conf_bridge_node *node)
 		return rv;
 	}
 
+	nng_mtx_lock(bridge_arg->exec_mtx);
 	nng_cv_wait(bridge_arg->exec_cv);
+	nng_mtx_unlock(bridge_arg->exec_mtx);
 	nng_cv_free(bridge_arg->exec_cv);
 	bridge_arg->exec_cv = NULL;
 
