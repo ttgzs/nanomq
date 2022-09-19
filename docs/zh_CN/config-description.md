@@ -143,7 +143,7 @@ NanoMQ 的配置文件通常以 .conf 作为后缀名，你可以在 etc 目录�
 
 | 参数名                         | 数据类型 | 参数说明                                                                           |
 | ------------------------------| ------- | -------------------------------------------------------------------------------- |
-| rule_option                   | Enum    | 规则引擎开关, 当时用规则引擎进行持久化，必须设置该选项为 ON。                              |
+| rule_option                   | Enum    | 规则引擎开关, 当使用规则引擎进行持久化，必须设置该选项为 ON。                              |
 | rule_option.sqlite            | Enum    | 规则引擎插件开关 (enable/disable)                                                   |
 | rule_option.sqlite.conf.path  | String  | 规则引擎选项 sqlite3 配置文件路径                                                    |
 | rule_option.repub             | Enum    | 规则引擎 repub 选项 (enable/disable)                                               |
@@ -163,7 +163,7 @@ NanoMQ 的配置文件通常以 .conf 作为后缀名，你可以在 etc 目录�
 
 | 参数名                         | 数据类型 | 参数说明                                                                           |
 | ------------------------------| ------- | -------------------------------------------------------------------------------- |
-| rule.sqlite.path              | String  | 规则引擎 mysql 数据库名字, 默认是 mysql_rule_db                                      |
+| rule.mysql.path              | String  | 规则引擎 mysql 数据库名字, 默认是 mysql_rule_db                                      |
 | rule.mysql.%d.table           | String  | 规则引擎 mysql 数据库表名字, '%d' 是占位符                                            |
 | rule.mysql.%d.host            | String  | 规则引擎 mysql 数据库主机名 '%d' 是占位符                                             |
 | rule.mysql.%d.username        | String  | 规则引擎 mysql 数据库用户名, '%d' 是占位符                                            |
